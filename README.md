@@ -51,14 +51,14 @@ python -m venv .venv
 .venv\Scripts\activate
 
 # 3. Install dependencies
-pip install -r requirements.txt
+pip install -r config/requirements.txt
 
 # 4. Configure environment
-cp .env.example .env
-# Edit .env with your Azure credentials or set LOCAL_MODE=true
+cp config/.env.example config/.env
+# Edit config/.env with your Azure credentials or set LOCAL_MODE=true
 
 # 5. Run the application
-python app.py
+python src/app.py
 
 # 6. Generate API key
 curl -X POST http://127.0.0.1:8080/auth/generate-key
@@ -157,7 +157,13 @@ pip install -r requirements.txt
 
 ### 2. Configuration
 
-Create a `.env` file in the project root:
+Create a `.env` file in the `config/` directory:
+
+```bash
+cp config/.env.example config/.env
+```
+
+Edit `config/.env`:
 
 ```env
 # Azure OpenAI Configuration
@@ -176,7 +182,7 @@ API_KEY_SALT=your-secret-salt  # Change this in production!
 ### 3. Run Application
 
 ```bash
-python app.py
+python src/app.py
 ```
 
 Server will start on `http://127.0.0.1:8080`
