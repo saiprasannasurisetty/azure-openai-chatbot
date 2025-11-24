@@ -28,7 +28,7 @@ A production-ready conversational AI chatbot powered by **Azure OpenAI**, featur
 - [Usage Examples](#-usage-examples)
 - [Configuration](#-configuration)
 - [Database Schema](#-database-schema)
-- [Deployment](#-deployment)
+- [☁️ Azure Deployment](#️-azure-deployment)
 - [Contributing](#-contributing)
 - [License](#-license)
 
@@ -487,12 +487,152 @@ git push heroku main
 heroku config:set AZURE_OPENAI_ENDPOINT=...
 ```
 
+## ☁️ Azure Deployment
+
+### Deploy with 1 Command (Recommended)
+
+Get a **public URL** with instant deployment to Azure App Service:
+
+```bash
+# Windows
+.\scripts\deploy-azure.bat myResourceGroup chatbot-app eastus
+
+# Linux/Mac
+bash scripts/deploy-azure.sh myResourceGroup chatbot-app eastus
+```
+
+**Your app will be live at:** `https://chatbot-app.azurewebsites.net`
+
+### What Gets Deployed
+
+| Resource | Cost | Purpose |
+|----------|------|---------|
+| **App Service Plan (B1)** | $12/month | Compute for your app |
+| **Container Registry** | $5/month | Store Docker images |
+| **App Service** | Included | Your running app |
+| **Total** | ~$17/month | Production-grade hosting |
+
+### Deployment Methods
+
+1. **Automated Script** (Easiest) - Run `deploy-azure.sh` or `deploy-azure.bat`
+2. **GitHub Actions** (Continuous) - Auto-deploy on every push to main
+3. **Azure Portal** (Manual) - Create resources in Azure Portal UI
+4. **Docker Compose** (Local Testing) - `docker-compose up` for testing before deploying
+
+### GitHub Actions CI/CD
+
+Automatic deployment every time you push code:
+
+```bash
+# 1. Create service principal for GitHub
+az ad sp create-for-rbac --name github-actions --role contributor
+
+# 2. Add GitHub Secrets:
+#    - AZURE_CREDENTIALS (from above)
+#    - AZURE_APP_NAME (e.g., chatbot-app)
+
+# 3. Push code - automatic deployment!
+git push
+```
+
+### Public API Access
+
+Once deployed, access your chatbot worldwide:
+
+```bash
+# 1. Health check
+curl https://chatbot-app.azurewebsites.net/health
+
+# 2. Generate API key
+API_KEY=$(curl -s -X POST https://chatbot-app.azurewebsites.net/auth/generate-key \
+  | jq -r '.api_key')
+
+# 3. Chat with public endpoint
+curl -X POST https://chatbot-app.azurewebsites.net/chat \
+  -H "Authorization: Bearer $API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"prompt": "What is Azure?"}'
+```
+
+### Configuration for Production
+
+```bash
+# Set Azure OpenAI credentials
+az webapp config appsettings set \
+  --resource-group myResourceGroup \
+  --name chatbot-app \
+  --settings \
+  AZURE_OPENAI_ENDPOINT="https://resource.openai.azure.com/" \
+  AZURE_OPENAI_KEY="your-key" \
+  AZURE_OPENAI_DEPLOYMENT="gpt-35-turbo"
+```
+
+### Monitoring & Logs
+
+```bash
+# View real-time logs
+az webapp log tail --resource-group myResourceGroup --name chatbot-app
+
+# Check deployment status
+az webapp show --resource-group myResourceGroup --name chatbot-app --query state
+
+# View metrics
+az webapp metrics show-operations --resource-group myResourceGroup --name chatbot-app
+```
+
+### Documentation
+
+- **[DEPLOYMENT.md](docs/DEPLOYMENT.md)** - Complete Azure deployment guide
+- **[AZURE_SETUP.md](docs/AZURE_SETUP.md)** - ARM templates & configuration
+- **[Dockerfile](Dockerfile)** - Production container configuration
+
+### Docker Deployment
+
+Test locally before deploying:
+
+```bash
+# Build Docker image
+docker build -t chatbot:latest .
+
+# Run locally
+docker run -p 8080:8080 \
+  -e LOCAL_MODE=true \
+  -e PORT=8080 \
+  chatbot:latest
+
+# Test
+curl http://localhost:8080/health
+```
+
+Or use Docker Compose:
+
+```bash
+docker-compose up
+# App runs on http://localhost:8080
+```
+
+### Cost Optimization
+
+- **Development**: Use B1 plan ($12/month) - Perfect for testing
+- **Production**: Upgrade to P1V2 ($73/month) for better performance
+- **Always-On**: Enable to prevent app from stopping due to inactivity
+- **Auto-Scale**: Scale instances based on CPU/memory
+
+### Cleanup (When Done)
+
+```bash
+# Delete all resources
+az group delete --name myResourceGroup --yes
+```
+
 ## 📚 Additional Resources
 
-- [QUICKSTART.md](QUICKSTART.md) - 5-minute quick reference
-- [FEATURES.md](FEATURES.md) - Complete feature documentation
-- [IMPLEMENTATION.md](IMPLEMENTATION.md) - Technical architecture details
-- [test_api.ps1](test_api.ps1) - PowerShell test suite
+- [QUICKSTART.md](docs/QUICKSTART.md) - 5-minute quick reference
+- [FEATURES.md](docs/FEATURES.md) - Complete feature documentation
+- [IMPLEMENTATION.md](docs/IMPLEMENTATION.md) - Technical architecture details
+- [TESTING.md](docs/TESTING.md) - Unit tests and pytest guide
+- [DEPLOYMENT.md](docs/DEPLOYMENT.md) - Comprehensive deployment guide
+- [tests/test_api.ps1](tests/test_api.ps1) - PowerShell test suite
 
 ## 🔄 Future Enhancements
 
