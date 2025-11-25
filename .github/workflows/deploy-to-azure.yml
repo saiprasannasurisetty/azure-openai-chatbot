@@ -1,0 +1,83 @@
+name: Deploy to Azure
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Azure Login
+        uses: azure/login@v1
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+      - name: Create Resource Group
+        run: |
+          az group create \
+            --name ${{ secrets.AZURE_RESOURCE_GROUP }} \
+            --location eastus
+
+      - name: Create App Service Plan
+        run: |
+          az appservice plan create \
+            --name chatbot-plan \
+            --resource-group ${{ secrets.AZURE_RESOURCE_GROUP }} \
+            --sku B1 \
+            --is-linux
+        continue-on-error: true  # Plan might already exist
+
+      - name: Create Web App
+        run: |
+          az webapp create \
+            --resource-group ${{ secrets.AZURE_RESOURCE_GROUP }} \
+            --plan chatbot-plan \
+            --name ${{ secrets.AZURE_APP_NAME }} \
+            --runtime "PYTHON:3.9"
+        continue-on-error: true  # App might already exist
+
+      - name: Configure App Settings
+        run: |
+          az webapp config appsettings set \
+            --resource-group ${{ secrets.AZURE_RESOURCE_GROUP }} \
+            --name ${{ secrets.AZURE_APP_NAME }} \
+            --settings \
+            LOCAL_MODE=false \
+            AZURE_OPENAI_ENDPOINT=${{ secrets.AZURE_OPENAI_ENDPOINT }} \
+            AZURE_OPENAI_KEY=${{ secrets.AZURE_OPENAI_KEY }} \
+            AZURE_OPENAI_DEPLOYMENT=${{ secrets.AZURE_OPENAI_DEPLOYMENT }}
+        continue-on-error: true  # Settings might already exist
+
+      - name: Deploy Code
+        run: |
+          az webapp deployment source config-zip \
+            --resource-group ${{ secrets.AZURE_RESOURCE_GROUP }} \
+            --name ${{ secrets.AZURE_APP_NAME }} \
+            --src-path ./deployment.zip
+
+      - name: Get App URL
+        run: |
+          URL=$(az webapp show \
+            --resource-group ${{ secrets.AZURE_RESOURCE_GROUP }} \
+            --name ${{ secrets.AZURE_APP_NAME }} \
+            --query defaultHostName \
+            -o tsv)
+          echo "App deployed to: https://$URL"
+          echo "DEPLOYMENT_URL=https://$URL" >> $GITHUB_ENV
+
+      - name: Test Deployment
+        run: |
+          sleep 10
+          curl -f https://${{ env.DEPLOYMENT_URL }}/health || true
+
+      - name: Post Deployment Summary
+        run: |
+          echo "✅ Deployment Complete!"
+          echo "URL: https://${{ env.DEPLOYMENT_URL }}"
+          echo "Generate API key: https://${{ env.DEPLOYMENT_URL }}/auth/generate-key"
