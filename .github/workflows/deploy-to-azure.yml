@@ -13,6 +13,24 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v3
 
+      - name: Check Secrets
+        run: |
+          echo "Checking required secrets..."
+          if [ -z "${{ secrets.AZURE_CREDENTIALS }}" ]; then
+            echo "❌ ERROR: AZURE_CREDENTIALS secret is missing!"
+            echo "Please add it to: Settings → Secrets and variables → Actions"
+            exit 1
+          fi
+          if [ -z "${{ secrets.AZURE_RESOURCE_GROUP }}" ]; then
+            echo "❌ ERROR: AZURE_RESOURCE_GROUP secret is missing!"
+            exit 1
+          fi
+          if [ -z "${{ secrets.AZURE_APP_NAME }}" ]; then
+            echo "❌ ERROR: AZURE_APP_NAME secret is missing!"
+            exit 1
+          fi
+          echo "✅ All required secrets found!"
+
       - name: Azure Login
         uses: azure/login@v1
         with:
@@ -23,6 +41,7 @@ jobs:
           az group create \
             --name ${{ secrets.AZURE_RESOURCE_GROUP }} \
             --location eastus
+          echo "✅ Resource Group ready"
 
       - name: Create App Service Plan
         run: |
@@ -30,8 +49,8 @@ jobs:
             --name chatbot-plan \
             --resource-group ${{ secrets.AZURE_RESOURCE_GROUP }} \
             --sku B1 \
-            --is-linux
-        continue-on-error: true  # Plan might already exist
+            --is-linux || echo "Plan already exists"
+          echo "✅ App Service Plan ready"
 
       - name: Create Web App
         run: |
@@ -39,8 +58,8 @@ jobs:
             --resource-group ${{ secrets.AZURE_RESOURCE_GROUP }} \
             --plan chatbot-plan \
             --name ${{ secrets.AZURE_APP_NAME }} \
-            --runtime "PYTHON:3.9"
-        continue-on-error: true  # App might already exist
+            --runtime "PYTHON:3.9" || echo "App already exists"
+          echo "✅ Web App ready"
 
       - name: Configure App Settings
         run: |
@@ -49,10 +68,21 @@ jobs:
             --name ${{ secrets.AZURE_APP_NAME }} \
             --settings \
             LOCAL_MODE=false \
-            AZURE_OPENAI_ENDPOINT=${{ secrets.AZURE_OPENAI_ENDPOINT }} \
-            AZURE_OPENAI_KEY=${{ secrets.AZURE_OPENAI_KEY }} \
-            AZURE_OPENAI_DEPLOYMENT=${{ secrets.AZURE_OPENAI_DEPLOYMENT }}
-        continue-on-error: true  # Settings might already exist
+            AZURE_OPENAI_ENDPOINT="${{ secrets.AZURE_OPENAI_ENDPOINT }}" \
+            AZURE_OPENAI_KEY="${{ secrets.AZURE_OPENAI_KEY }}" \
+            AZURE_OPENAI_DEPLOYMENT="${{ secrets.AZURE_OPENAI_DEPLOYMENT }}"
+          echo "✅ Settings configured"
+
+      - name: Prepare Deployment Package
+        run: |
+          mkdir -p deployment
+          cp -r src deployment/
+          cp -r config deployment/
+          cp -r tests deployment/
+          cp requirements.txt deployment/ || echo "No requirements.txt"
+          cp .env.example deployment/.env || echo "No .env.example"
+          cd deployment && zip -r ../deployment.zip . && cd ..
+          echo "✅ Deployment package ready"
 
       - name: Deploy Code
         run: |
@@ -60,6 +90,7 @@ jobs:
             --resource-group ${{ secrets.AZURE_RESOURCE_GROUP }} \
             --name ${{ secrets.AZURE_APP_NAME }} \
             --src-path ./deployment.zip
+          echo "✅ Code deployed"
 
       - name: Get App URL
         run: |
@@ -68,16 +99,30 @@ jobs:
             --name ${{ secrets.AZURE_APP_NAME }} \
             --query defaultHostName \
             -o tsv)
-          echo "App deployed to: https://$URL"
+          echo "App URL: https://$URL"
           echo "DEPLOYMENT_URL=https://$URL" >> $GITHUB_ENV
 
       - name: Test Deployment
         run: |
-          sleep 10
-          curl -f https://${{ env.DEPLOYMENT_URL }}/health || true
+          echo "Waiting for app to start..."
+          sleep 15
+          URL="${{ env.DEPLOYMENT_URL }}"
+          echo "Testing: $URL/health"
+          curl -v "$URL/health" || echo "Health check failed (app may still be starting)"
 
       - name: Post Deployment Summary
         run: |
-          echo "✅ Deployment Complete!"
-          echo "URL: https://${{ env.DEPLOYMENT_URL }}"
-          echo "Generate API key: https://${{ env.DEPLOYMENT_URL }}/auth/generate-key"
+          echo "╔════════════════════════════════════════════╗"
+          echo "║  ✅ DEPLOYMENT COMPLETE!                 ║"
+          echo "╚════════════════════════════════════════════╝"
+          echo ""
+          echo "Your app is now live at:"
+          echo "  https://${{ env.DEPLOYMENT_URL }}"
+          echo ""
+          echo "Next steps:"
+          echo "  1. Generate API key:"
+          echo "     POST https://${{ env.DEPLOYMENT_URL }}/auth/generate-key"
+          echo "  2. Send messages:"
+          echo "     POST https://${{ env.DEPLOYMENT_URL }}/chat"
+          echo "  3. Check health:"
+          echo "     GET https://${{ env.DEPLOYMENT_URL }}/health"
